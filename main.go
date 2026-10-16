@@ -4,9 +4,16 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Failed to load env")
+	}
+
 	muxHandler := http.NewServeMux()
 
 	muxHandler.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
