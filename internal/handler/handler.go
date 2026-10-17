@@ -1,13 +1,18 @@
 package handler
 
-import "github.com/permanaa/weather-api-with-redis/internal/config"
+import (
+	"github.com/permanaa/weather-api-with-redis/internal/config"
+	"github.com/permanaa/weather-api-with-redis/internal/helper"
+)
 
 type Handler struct {
-	cfg *config.Config
+	cfg   *config.Config
+	cache *helper.Cache
 }
 
-func NewHandler(cfg *config.Config) *Handler {
+func NewHandler(cfg *config.Config, cache *helper.Cache) *Handler {
 	return &Handler{
-		cfg: cfg,
+		cfg:   cfg,
+		cache: cache,
 	}
 }

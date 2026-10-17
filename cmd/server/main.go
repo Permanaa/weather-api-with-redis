@@ -7,7 +7,9 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/permanaa/weather-api-with-redis/internal/config"
+	"github.com/permanaa/weather-api-with-redis/internal/db"
 	"github.com/permanaa/weather-api-with-redis/internal/handler"
+	"github.com/permanaa/weather-api-with-redis/internal/helper"
 )
 
 func main() {
@@ -16,8 +18,15 @@ func main() {
 		log.Fatal("Failed to load env")
 	}
 
+	redisClient, err := db.NewRedisClient()
+	if err != nil {
+		log.Fatal("Failed to connect redis", err)
+	}
+
 	cfg := config.Load()
-	handler := handler.NewHandler(cfg)
+	cache := helper.NewCache(redisClient)
+
+	handler := handler.NewHandler(cfg, cache)
 
 	mux := http.NewServeMux()
 

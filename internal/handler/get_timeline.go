@@ -3,7 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/permanaa/weather-api-with-redis/internal/helper"
@@ -13,13 +15,25 @@ import (
 func (h *Handler) GetTimeline(w http.ResponseWriter, r *http.Request) {
 	location := r.PathValue("location")
 
+	var timeline model.Timeline
+
+	hit, err := h.cache.GetJson(r.Context(), location, &timeline)
+	if err != nil {
+		log.Printf("Redis cache read failed: location=%q err=%v", location, err)
+	}
+
+	if hit {
+		helper.JsonSuccess(w, http.StatusOK, timeline)
+		return
+	}
+
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
 
-	url := fmt.Sprintf("%s/timeline/%s?unitGroup=us&key=%s&include=days,hours", h.cfg.BaseUrl, location, h.cfg.ApiKey)
+	url := fmt.Sprintf("%s/timeline/%s?unitGroup=us&key=%s&include=days,hours", h.cfg.BaseUrl, url.PathEscape(location), h.cfg.ApiKey)
 
-	request, err := http.NewRequest(http.MethodGet, url, nil)
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil)
 	if err != nil {
 		helper.JsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -32,9 +46,12 @@ func (h *Handler) GetTimeline(w http.ResponseWriter, r *http.Request) {
 	}
 	defer res.Body.Close()
 
-	var timeline model.Timeline
 	if err := json.NewDecoder(res.Body).Decode(&timeline); err != nil {
 		helper.JsonError(w, http.StatusInternalServerError, err.Error())
+	}
+
+	if err := h.cache.SetJson(r.Context(), location, timeline, 1*time.Minute); err != nil {
+		log.Println("Failed set cache redis", location, err)
 	}
 
 	helper.JsonSuccess(w, http.StatusOK, timeline)
