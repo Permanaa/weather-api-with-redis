@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"github.com/joho/godotenv"
+	"github.com/permanaa/weather-api-with-redis/internal/config"
+	"github.com/permanaa/weather-api-with-redis/internal/handler"
 )
 
 func main() {
@@ -14,9 +16,12 @@ func main() {
 		log.Fatal("Failed to load env")
 	}
 
-	muxHandler := http.NewServeMux()
+	cfg := config.Load()
+	handler := handler.NewHandler(cfg)
 
-	muxHandler.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"status":  "OK",
@@ -24,9 +29,11 @@ func main() {
 		})
 	})
 
+	mux.HandleFunc("GET /timeline/{location}", handler.GetTimeline)
+
 	server := &http.Server{
 		Addr:    ":1804",
-		Handler: muxHandler,
+		Handler: mux,
 	}
 
 	log.Println("Serving on port: 1804")
