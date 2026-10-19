@@ -1,34 +1,33 @@
 # Weather API with Redis
 
-A weather API built with Go that retrieves weather data from the [Visual Crossing Weather API](https://www.visualcrossing.com/weather-api/) and uses Redis to cache responses for faster subsequent requests.
-
-This project demonstrates backend development concepts including third-party API integration, Redis caching, environment-based configuration, HTTP client handling, and Docker-based service setup.
+A REST API built with Go that retrieves weather timeline data from the [Visual Crossing Weather API](https://www.visualcrossing.com/weather-api/) and uses Redis caching to reduce redundant external API requests and improve response times.
 
 ## Features
 
-- **Weather Data Integration** — Fetch weather information from the Visual Crossing Weather API.
-- **Redis Caching** — Cache weather responses to reduce unnecessary requests to the external API.
-- **Environment Configuration** — Manage API credentials and Redis connection settings through environment variables.
-- **Docker Support** — Run Redis locally using Docker Compose.
-- **Go Backend** — Built with Go and the `net/http` package for HTTP request handling.
-- **Error Handling** — Handle external API and Redis errors.
+- **Weather API Integration** — Fetch weather timeline data from Visual Crossing.
+- **Redis Caching** — Cache weather responses to avoid repeated upstream API calls.
+- **IP-Based Rate Limiting** — Limit incoming requests to help protect API resources from excessive usage.
+- **HTTP Client Handling** — Handle requests to third-party services and network errors.
+- **Environment Configuration** — Manage API credentials and Redis settings through environment variables.
+- **Docker Compose** — Run Redis locally with persistent storage and a health check.
+- **Health Check Endpoint** — Check whether the HTTP server is responding.
 
 ## Tech Stack
 
 - **Language:** Go
-- **Caching:** Redis
+- **HTTP Server:** Go `net/http`
+- **Cache:** Redis 7
 - **Redis Client:** `github.com/redis/go-redis/v9`
 - **Weather Provider:** Visual Crossing Weather API
 - **Configuration:** Environment variables and `godotenv`
-- **Containerization:** Docker and Docker Compose
+- **Containerization:** Docker Compose
+- **Rate Limiting:** `golang.org/x/time/rate`
 
 ## Prerequisites
 
-Make sure you have the following installed:
-
 - [Go 1.26 or later](https://go.dev/dl/)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) or Docker Engine
-- A [Visual Crossing Weather API key](https://www.visualcrossing.com/weather-api/)
+- [Docker](https://www.docker.com/)
+- A [Visual Crossing API key](https://www.visualcrossing.com/weather-api/)
 
 ## Getting Started
 
@@ -41,13 +40,13 @@ cd weather-api-with-redis
 
 ### 2. Configure environment variables
 
-Create a `.env` file from the example:
+Create a local environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-Update the values in `.env`:
+Configure the variables in `.env`:
 
 ```env
 VISUAL_CROSSING_WEATHER_API_KEY=your_api_key
@@ -60,13 +59,13 @@ REDIS_DB=0
 
 | Variable | Description |
 |---|---|
-| `VISUAL_CROSSING_WEATHER_API_KEY` | API key used to authenticate requests to Visual Crossing |
+| `VISUAL_CROSSING_WEATHER_API_KEY` | API key for Visual Crossing |
 | `BASE_URL` | Base URL used for weather API requests |
 | `REDIS_ADDR` | Redis server address |
 | `REDIS_PASSWORD` | Redis password, if authentication is enabled |
 | `REDIS_DB` | Redis database index |
 
-Use the appropriate base URL expected by the application. Keep your actual API key in `.env` and never commit secrets to version control.
+Keep your actual API key in `.env`. Never commit credentials to version control.
 
 ### 3. Start Redis
 
@@ -76,9 +75,7 @@ Start the Redis service using Docker Compose:
 docker compose up -d
 ```
 
-The provided Compose configuration uses Redis 7 Alpine, exposes Redis on `127.0.0.1:6379`, enables append-only persistence, and defines a health check.
-
-Verify that Redis is running:
+Verify that Redis is ready:
 
 ```bash
 docker exec -it weather-redis redis-cli ping
@@ -90,7 +87,7 @@ Expected output:
 PONG
 ```
 
-### 4. Install dependencies
+### 4. Install Go dependencies
 
 ```bash
 go mod download
@@ -98,43 +95,67 @@ go mod download
 
 ### 5. Run the API
 
-Start the application using its server entry point:
-
 ```bash
 go run ./cmd/server
 ```
 
-Check the application logs for startup errors. The HTTP port and available routes depend on the server configuration.
+The server listens on port `1804`.
 
-## API Usage
+## API Endpoints
 
-The API accepts a location and uses Redis to cache weather data for subsequent requests.
+### Health Check
 
-For example, a location such as `London,UK` can be used as a weather lookup key.
-
-Once the server is running, send a request to the weather endpoint using the route and query parameter names defined by the application.
-
-Example request pattern:
+Check whether the server is responding.
 
 ```http
-GET /weather?location=London%2CUK
+GET /healthz
 ```
 
-> **Note:** Confirm the actual route, query parameter name, and server port in the source code before using this example. It illustrates the intended request pattern rather than a verified endpoint contract.
+Example:
 
-### Example Workflow
+```bash
+curl -i http://localhost:1804/healthz
+```
+
+### Get Weather Timeline
+
+Retrieve weather timeline data for a location.
+
+```http
+GET /timeline/{location}
+```
+
+Example:
+
+```bash
+curl -i "http://localhost:1804/timeline/London%2CUK"
+```
+
+URL-encode location values when they contain reserved characters. The actual accepted location format and response schema depend on the weather provider integration.
+
+## How Redis Caching Works
+
+The API uses Redis to cache weather data and reduce redundant requests to Visual Crossing.
 
 1. A client requests weather data for a location.
-2. The API checks Redis for a cached response.
-3. If a valid cache entry exists, the API can return the cached data.
-4. If the entry is missing, the API requests fresh weather data from Visual Crossing.
-5. The response is cached in Redis for subsequent requests.
+2. The application checks Redis for a cached result.
+3. If cached data is available and valid, the application can return it without another upstream request.
+4. If the cache entry is missing, the application fetches weather data from Visual Crossing.
+5. The response is stored in Redis for subsequent requests, according to the application's cache expiration policy.
 
-This caching strategy can reduce external API calls and improve response times for repeated location lookups.
+This cache-aside approach can reduce latency, lower external API consumption, and improve efficiency for repeated requests.
+
+## Rate Limiting
+
+The API applies IP-based rate limiting through middleware to control incoming request frequency.
+
+Rate limiting helps reduce excessive requests and protect application resources. Requests that exceed the configured limit are rejected according to the middleware's response behavior.
+
+The exact rate, burst allowance, and HTTP response details are defined in the rate limiter implementation.
 
 ## Inspect Redis Cache
 
-Connect to Redis using the command-line client:
+Connect to Redis:
 
 ```bash
 docker exec -it weather-redis redis-cli
@@ -146,13 +167,13 @@ List keys in the current database:
 SCAN 0
 ```
 
-Inspect a specific key:
+Inspect a cached value:
 
 ```redis
 GET "London,UK"
 ```
 
-The actual key format depends on the application's cache implementation. If the response is stored under a different key or serialization format, adjust the command accordingly.
+The actual key format and stored value type depend on the cache implementation.
 
 Exit the Redis CLI:
 
@@ -160,21 +181,21 @@ Exit the Redis CLI:
 exit
 ```
 
-## Stop Redis
+## Stop the Services
 
-Stop the Docker Compose services:
+Stop Redis:
 
 ```bash
 docker compose down
 ```
 
-The named Redis volume is retained, so cached data may persist across container restarts. To remove the persisted volume as well, run:
+To remove the Redis volume and its persisted data as well:
 
 ```bash
 docker compose down -v
 ```
 
-**Warning:** Removing the volume deletes the data stored in that Docker volume.
+**Warning:** Removing the volume deletes the data stored in it.
 
 ## Project Structure
 
@@ -182,22 +203,27 @@ docker compose down -v
 weather-api-with-redis/
 ├── cmd/
 │   └── server/       # Application entry point
-├── internal/         # Application implementation
-├── .env.example      # Environment variable template
+├── internal/
+│   ├── config/       # Application configuration
+│   ├── db/           # Redis connection
+│   ├── handler/      # HTTP handlers
+│   ├── helper/       # Cache helpers
+│   └── middleware/   # IP rate limiting
+├── .env.example      # Environment template
 ├── compose.yml       # Redis service configuration
-├── go.mod            # Go module and dependencies
-├── go.sum            # Dependency checksums
+├── go.mod
+├── go.sum
 └── README.md
 ```
 
 ## Learning Objectives
 
-This project explores several backend engineering concepts:
+This project demonstrates practical backend development concepts:
 
-- Integrating a Go application with a third-party REST API.
-- Managing HTTP requests and handling network errors.
-- Connecting Go applications to Redis.
-- Implementing a cache-aside pattern.
-- Configuring applications using environment variables.
+- Integrating third-party REST APIs with Go.
+- Managing HTTP requests and network timeouts.
+- Implementing Redis caching.
+- Applying middleware-based IP rate limiting.
+- Handling configuration and secrets through environment variables.
 - Running supporting infrastructure with Docker Compose.
-- Inspecting and debugging cached data.
+- Debugging API and cache behavior.
