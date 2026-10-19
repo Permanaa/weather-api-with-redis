@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/permanaa/weather-api-with-redis/internal/config"
@@ -45,8 +46,9 @@ func main() {
 	applyMiddleware := limiter.Middleware(mux)
 
 	server := &http.Server{
-		Addr:    ":1804",
-		Handler: applyMiddleware,
+		Addr:              ":1804",
+		Handler:           applyMiddleware,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	log.Println("Serving on port: 1804")
