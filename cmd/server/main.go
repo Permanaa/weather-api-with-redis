@@ -10,6 +10,7 @@ import (
 	"github.com/permanaa/weather-api-with-redis/internal/db"
 	"github.com/permanaa/weather-api-with-redis/internal/handler"
 	"github.com/permanaa/weather-api-with-redis/internal/helper"
+	"github.com/permanaa/weather-api-with-redis/internal/middleware"
 )
 
 func main() {
@@ -25,6 +26,7 @@ func main() {
 
 	cfg := config.Load()
 	cache := helper.NewCache(redisClient)
+	limiter := middleware.NewIPRateLimiter()
 
 	handler := handler.NewHandler(cfg, cache)
 
@@ -40,9 +42,11 @@ func main() {
 
 	mux.HandleFunc("GET /timeline/{location}", handler.GetTimeline)
 
+	applyMiddleware := limiter.Middleware(mux)
+
 	server := &http.Server{
 		Addr:    ":1804",
-		Handler: mux,
+		Handler: applyMiddleware,
 	}
 
 	log.Println("Serving on port: 1804")
